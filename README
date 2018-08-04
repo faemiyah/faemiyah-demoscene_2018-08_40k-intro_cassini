@@ -1,0 +1,14 @@
+Cassini
+
+Synth, music, direction input:               Juippi
+Fluidsim, Cassini SDF, additional direction: Warma
+Everything else:                             Trilkk
+
+FreeBSD-ia32 intro for Assembly 2018 64k intro compo. Requires at least
+OpenGL 4.3, so unless AMD and Intel have significantly stepped up their
+driver game, it's NVidia-only on FreeBSD as usual. Ports for other
+platforms are available.
+
+32k target failed, so I guess it's a 40k then.
+
+Greets in the intro.

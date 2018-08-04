@@ -1,0 +1,182 @@
+// Following principle from https://github.com/tunabrain/incremental-fluids
+
+layout(location=0) uniform int control;
+layout(location=5) uniform sampler2D tex;
+layout(location=6) uniform sampler2D boundary;
+layout(location=7) uniform sampler2D initial;
+
+in vec2 texcoord;
+
+out vec4 output_color;
+
+const float dx = 1.0;
+const float dt = 0.01;
+const float rho = 1.0;
+
+const vec2 pixel_size = vec2(1.0) / textureSize(tex, 0);
+const vec2 offset_p = 0.5*vec2(pixel_size);
+const vec2 offset_vx = 0.5*vec2(0.0, pixel_size.y);
+const vec2 offset_vy = 0.5*vec2(pixel_size.x, 0.0);
+const vec2 texcoord_up = texcoord + vec2(0.0, pixel_size.y);
+const vec2 texcoord_dn = texcoord + vec2(0.0, -pixel_size.y);
+const vec2 texcoord_lt = texcoord + vec2(-pixel_size.x, 0.0);
+const vec2 texcoord_rt = texcoord + vec2(pixel_size.x, 0.0);
+const int ADD_INFLOW = 0;
+const int BUILD_PRESSURE = ADD_INFLOW + 1;
+const int PROJECT = BUILD_PRESSURE + 10;
+const int APPLY_PRESSURE = PROJECT + 1;
+const int ADVECT_DYE = APPLY_PRESSURE + 1;
+const int ADVECT_SIMULATIONSPACE = ADVECT_DYE + 1;
+
+/// Boundary values must be -1, 1 or 0.
+/// 8-bit color channels cannot encode exactly half.
+vec4 bval(vec4 op)
+{
+  vec4 ret = op * 2.0 - 1.0;
+
+  if(abs(ret.x) < 0.1)
+  {
+    ret.x = 0.0;
+  }
+  if(abs(ret.y) < 0.1)
+  {
+    ret.y = 0.0;
+  }
+  if(abs(ret.z) < 0.1)
+  {
+    ret.z = 0.0;
+  }
+  if(abs(ret.w) < 0.1)
+  {
+    ret.w = 0.0;
+  }
+
+  return ret;
+}
+
+vec4 fetch_boundary(sampler2D tex_to_sample, sampler2D boundary, vec2 coord, vec2 offset)
+{
+  vec4 fetch_pars = bval(texture(boundary, coord));
+
+  vec4 ret = texture(tex_to_sample, coord + vec2(fetch_pars.rg) * pixel_size);
+  ret.rg *= fetch_pars.ba;
+
+  return ret;
+}
+
+float build_pressure()
+{
+  float scale = 1/dx;
+
+  vec4 T = texture(tex, texcoord_up);
+  vec4 R = texture(tex, texcoord_rt);
+  vec4 B = texture(tex, texcoord_dn);
+  vec4 L = texture(tex, texcoord_lt);
+//  vec4 T = fetch_boundary(tex, boundary, texcoord_up);
+//  vec4 B = fetch_boundary(tex, boundary, texcoord_dn);
+//  vec4 L = fetch_boundary(tex, boundary, texcoord_lt);
+//  vec4 R = fetch_boundary(tex, boundary, texcoord_rt);
+
+//  return -scale*(R.r - L.r + T.g - B.g);
+  return scale*(L.r - R.r + B.g - T.g);
+}
+
+float project()
+{
+  float scale = dt/(rho*dx*dx);
+
+  float T = texture(tex, texcoord_up).b;
+  float B = texture(tex, texcoord_dn).b;
+  float L = texture(tex, texcoord_lt).b;
+  float R = texture(tex, texcoord_rt).b;
+
+//  float T = fetch_boundary(tex, boundary, texcoord_up).b;
+//  float B = fetch_boundary(tex, boundary, texcoord_dn).b;
+//  float L = fetch_boundary(tex, boundary, texcoord_lt).b;
+//  float R = fetch_boundary(tex, boundary, texcoord_rt).b;
+
+  float offdiag = -scale*(T+B+L+R);
+
+//  return (fetch_boundary(initial, boundary, texcoord).b - offdiag) / (4*scale);
+  return (texture(initial, texcoord).b - offdiag) / (4*scale);
+}
+
+vec2 apply_pressure()
+{
+  float scale = dt/(rho*dx);
+
+//  float T = fetch_boundary(tex, boundary, texcoord_up).b;
+//  float B = fetch_boundary(tex, boundary, texcoord_dn).b;
+//  float L = fetch_boundary(tex, boundary, texcoord_lt).b;
+//  float R = fetch_boundary(tex, boundary, texcoord_rt).b;
+
+//  return vec2(R-L, T-B)*scale;
+//  float C = texture(tex, texcoord).b;
+  float T = texture(tex, texcoord_up).b;
+  float R = texture(tex, texcoord_rt).b;  
+  float B = texture(tex, texcoord_dn).b;
+  float L = texture(tex, texcoord_lt).b;
+
+  return vec2(L-R, B-T)*scale;
+}
+
+vec4 advect(sampler2D source)
+{
+//  vec2 advect_vec = - fetch_boundary(source, boundary, texcoord).rg * dt;
+//  return fetch_boundary(tex, boundary, texcoord + advect_vec);
+  vec2 offset = texture(source, texcoord).rg;
+  return texture(tex, texcoord - offset*pixel_size*dt);
+}
+
+void main()
+{
+  if(control <= ADD_INFLOW)
+  {
+    // TODO: add inflow here, tex is source fbo, output is target, 'initial' is input.
+    vec4 add_color = texture(initial, texcoord);
+    output_color = texture(tex, texcoord);
+    if(add_color.r != 0.0)
+    {
+    	output_color.r = add_color.r;
+    }
+    if(add_color.g != 0.0)
+    {
+    	output_color.g = add_color.g;
+    }
+    if(add_color.b != 0.0)
+    {
+    	output_color.b = add_color.b;
+    }
+    if(add_color.a != 1.0)
+    {
+    	output_color.a = add_color.a;
+    }
+  }
+  else if(control <= BUILD_PRESSURE)
+  {
+    output_color = vec4(0.0, 0.0, build_pressure(), texture(tex, texcoord).a);
+  }
+  else if(control <= PROJECT)
+  {
+    output_color = vec4(0.0, 0.0, project(), texture(tex, texcoord).a);
+  }
+  else if(control <= APPLY_PRESSURE)
+  {
+    vec2 v = apply_pressure();
+    output_color = vec4(v.x, v.y, 0.0, texture(tex, texcoord).a);
+  }
+	else if(control <= ADVECT_DYE)
+  {
+    // In this phase, Initial will contain the simulation space and tex will contain the dye texture
+    output_color = advect(initial);
+  }
+  else if(control <= ADVECT_SIMULATIONSPACE)
+  {
+    output_color = advect(tex);
+  }
+  // Default: just copy from input to output.
+  else
+  {
+    output_color = texture(initial, texcoord);
+  }
+}

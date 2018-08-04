@@ -1,0 +1,27 @@
+static const char *g_shader_vertex_font = ""
+#if defined(USE_LD)
+"font.vert.glsl"
+#else
+"layout(location=0)uniform vec3 A[5];"
+"layout(location=6)uniform vec4 z;"
+"in vec2 o;"
+"out vec2 d;"
+"out gl_PerVertex"
+"{"
+"vec4 gl_Position;"
+"}"
+";"
+"vec2 U(vec2 t,vec3 o)"
+"{"
+"float e=o.s/o.t;"
+"if(e>1.)return t/vec2(e,1.);"
+"return t/vec2(1.,e);"
+"}"
+"void main()"
+"{"
+"d=o;"
+"vec2 e=U(z.st+o*z.pq,A[3]);"
+"gl_Position=vec4(e,.0,1.);"
+"}"
+#endif
+"";
